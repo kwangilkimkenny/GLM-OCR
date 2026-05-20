@@ -1,0 +1,24 @@
+pipeline:
+  maas:
+    enabled: false
+
+  ocr_api:
+    api_host: localhost
+    api_port: 8080
+    api_path: /v1/chat/completions
+    api_mode: openai
+    model: glm-ocr
+    connect_timeout: 600
+    request_timeout: 600
+
+  page_loader:
+    max_tokens: 4096
+
+  layout:
+    model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
+    batch_size: 1
+    workers: 1
+    cuda_visible_devices: "0"
+
+logging:
+  level: INFO
