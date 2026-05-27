@@ -20,8 +20,17 @@ from app.utils.logger import logger
 RETENTION_MINUTES = int(os.environ.get("WOORI_RETENTION_MINUTES", "30"))
 CLEANUP_INTERVAL_SECONDS = int(os.environ.get("WOORI_CLEANUP_INTERVAL", "60"))
 
-# 시연용 항상 보존 디렉토리 (region-ocr 결과 등 별도 보관 원하면 추가)
-_PROTECTED_DIRS = {"region-ocr"}  # 하위는 자체 TTL 로 별도 관리해도 OK
+# 항상 보존할 디렉토리. region-ocr 결과 + Phase 6 모델 가중치 디렉토리.
+# 모델 가중치는 OUTPUT_DIR(=data/) 하위에 위치해 cleanup 대상에 포함되므로,
+# 명시적으로 보호하지 않으면 RETENTION_MINUTES 후 삭제돼 SR/검출/표구조가
+# 폴백으로 떨어진다. (parents[2]/data/sr_models 등과 동일 트리)
+_PROTECTED_DIRS = {
+    "region-ocr",
+    "sr_models",
+    "text_det",
+    "table_structure",
+    "seal_library",
+}
 
 
 def storage_summary() -> dict:
