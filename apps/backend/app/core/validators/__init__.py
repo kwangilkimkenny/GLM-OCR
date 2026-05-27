@@ -10,6 +10,7 @@ from app.core.validators.grounding import apply_grounding, is_grounded
 from app.core.validators.pii import (
     apply_masking_policy,
     detect_pii_in_text,
+    mask_pii_in_text,
     MaskingLevel,
     SENSITIVE_FIELD_NAMES,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "is_grounded",
     "apply_masking_policy",
     "detect_pii_in_text",
+    "mask_pii_in_text",
     "MaskingLevel",
     "SENSITIVE_FIELD_NAMES",
 ]

@@ -139,6 +139,67 @@ def apply_masking_policy(
     return stats
 
 
+# 본문 텍스트(예: freeform OCR 마크다운)에 남은 PII 직접 마스킹용 패턴.
+# 추출 필드 마스킹(apply_masking_policy) 과 별개로, 구조화 추출이 없는 문서의
+# OCR 본문에서 주민번호/연락처/이메일/주소/이름을 가린다.
+_RRN_TEXT_RE = re.compile(r"\b(\d{6})-?\d{7}\b")
+_PHONE_TEXT_RE = re.compile(r"\b(01[016789])-?(\d{3,4})-?(\d{4})\b")
+# 이름 라벨(성명/예금주/대리인 …) 뒤의 한글 2~4자 — 마크다운 구분자(*: 공백 등) 허용.
+_NAME_LABEL_RE = re.compile(
+    r"(성명|예금주|대표자|대리인|이름|신청인|수취인|가입자)([\s:：*()\[\]]{0,8})([가-힣]{2,4})"
+)
+# "홍길동 (서명)" 처럼 (서명) 앞의 한글 이름.
+_SIGN_NAME_RE = re.compile(r"([가-힣]{2,4})(\s*\(\s*서명\s*\))")
+
+
+def mask_pii_in_text(raw_text: str, level: MaskingLevel) -> tuple[str, dict]:
+    """OCR 본문 텍스트의 PII 를 마스킹한 (masked_text, stats) 반환.
+
+    level == "none" 이면 원문 그대로. extractor 가 없는 freeform 문서에서도
+    이름/주민번호/연락처/이메일/주소가 응답에 노출되지 않도록 한다.
+    """
+    stats = {"rrn": 0, "phone": 0, "email": 0, "address": 0, "name": 0}
+    if not raw_text or level == "none":
+        return raw_text, stats
+
+    def _tok(value: str) -> str:
+        return _mask_full(value) if level == "full" else _mask_partial_text(value)
+
+    def _rrn(m: "re.Match[str]") -> str:
+        stats["rrn"] += 1
+        return f"{m.group(1)}-{'*' * 7}" if level == "partial" else _mask_full(m.group(0))
+
+    def _phone(m: "re.Match[str]") -> str:
+        stats["phone"] += 1
+        if level == "partial":
+            return f"{m.group(1)}-{'*' * len(m.group(2))}-{m.group(3)}"
+        return _mask_full(m.group(0))
+
+    def _email(m: "re.Match[str]") -> str:
+        stats["email"] += 1
+        return _mask_email(m.group(0)) if level == "partial" else _mask_full(m.group(0))
+
+    def _addr(m: "re.Match[str]") -> str:
+        stats["address"] += 1
+        return _mask_address(m.group(0)) if level == "partial" else _mask_full(m.group(0))
+
+    def _name_label(m: "re.Match[str]") -> str:
+        stats["name"] += 1
+        return m.group(1) + m.group(2) + _tok(m.group(3))
+
+    def _sign_name(m: "re.Match[str]") -> str:
+        stats["name"] += 1
+        return _tok(m.group(1)) + m.group(2)
+
+    text = _RRN_TEXT_RE.sub(_rrn, raw_text)
+    text = _PHONE_TEXT_RE.sub(_phone, text)
+    text = EMAIL_RE.sub(_email, text)
+    text = ADDRESS_RE.sub(_addr, text)
+    text = _NAME_LABEL_RE.sub(_name_label, text)
+    text = _SIGN_NAME_RE.sub(_sign_name, text)
+    return text, stats
+
+
 def detect_pii_in_text(raw_text: str) -> list[dict]:
     """추출 필드와 무관하게 raw_text 에서 추가 PII 탐지.
 

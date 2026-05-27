@@ -15,6 +15,7 @@ from app.core.validators import (
     apply_grounding,
     apply_masking_policy,
     detect_pii_in_text,
+    mask_pii_in_text,
 )
 from app.utils.logger import logger
 
@@ -204,6 +205,12 @@ async def _merge_to_markdown(
     # Phase 2-C: layout_ocr 가 segments 를 만들었으면 그대로 노출
     if ocr_results.get("segments"):
         result["segments"] = ocr_results["segments"]
+    # Phase 6-A/B: 품질 진단 결과 forwarding
+    if ocr_results.get("quality_reports"):
+        result["quality_reports"] = ocr_results["quality_reports"]
+    # Phase 6-D: 표 구조 인식 결과 forwarding
+    if ocr_results.get("tables"):
+        result["tables"] = ocr_results["tables"]
 
     if progress_callback:
         await progress_callback(100.0, f"Merging {len(pages)} pages")
@@ -325,10 +332,32 @@ async def _merge_to_markdown(
         else:
             result["metadata"]["engine"] = engine
 
+    # PII: OCR 본문(full_markdown/layout/secondary) 자체를 마스킹.
+    # 구조화 추출 필드 마스킹(apply_masking_policy) 과 별개로, freeform 포함 모든
+    # 유형에서 응답·파일에 이름/주민번호/연락처/이메일/주소가 노출되지 않도록 한다.
+    # 주의: 추출·grounding 은 위에서 원본 full_md 로 이미 끝났으므로 출력만 가린다.
+    if masking_level != "none":
+        masked_md, text_pii_stats = mask_pii_in_text(
+            result.get("full_markdown") or "", masking_level
+        )
+        result["full_markdown"] = masked_md
+        for blk in result.get("layout") or []:
+            bc = blk.get("block_content")
+            if bc:
+                blk["block_content"], _ = mask_pii_in_text(bc, masking_level)
+        if result.get("secondary_markdown"):
+            result["secondary_markdown"], _ = mask_pii_in_text(
+                result["secondary_markdown"], masking_level
+            )
+        # extractor 가 없으면(freeform) result["pii"] 가 아직 없으므로 여기서 생성.
+        pii = result.setdefault("pii", {"masking_level": masking_level})
+        pii["text_stats"] = text_pii_stats
+        pii.setdefault("extra_in_text", detect_pii_in_text(full_md))
+
     # 写入文件
     md_output_path = str(Path(output_dir) / "result.md")
     with open(md_output_path, "w", encoding="utf-8") as f:
-        f.write(full_md)
+        f.write(result.get("full_markdown") or full_md)
     json_output_path = str(Path(output_dir) / "merged.json")
     safe_result = _to_json_safe(result)
     with open(json_output_path, "w", encoding="utf-8") as f:
