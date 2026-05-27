@@ -283,6 +283,9 @@ async def get_task_status(task_id: str):
             response_data["pii"] = result_data.get("pii")
             response_data["doc_elements"] = result_data.get("doc_elements")
             response_data["segments"] = result_data.get("segments")
+            # Phase 6
+            response_data["quality_reports"] = result_data.get("quality_reports")
+            response_data["tables"] = result_data.get("tables")
 
         return ApiResponse(
             success=True,

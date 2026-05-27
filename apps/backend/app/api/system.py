@@ -142,6 +142,36 @@ async def metrics_summary(
     return ApiResponse(success=True, data=summary, message="OK")
 
 
+@router.get("/phase6-status", response_model=ApiResponse[dict])
+async def phase6_status():
+    """Phase 6 모듈(SR/텍스트검출/표구조) 백엔드 가용성.
+
+    가중치/패키지 설치 상태 확인 + 자동 선택될 백엔드 안내.
+    운영 모니터링 + 시연 자리 점검용.
+    """
+    from app.core import super_resolution, text_detection, table_structure
+
+    # 캐시 무효화 후 fresh status (가중치를 런타임에 추가했을 수 있음)
+    super_resolution._BACKENDS_CACHE = None
+
+    sr_backends = [
+        {"name": b.name, "available": b.available, "note": b.note}
+        for b in super_resolution.list_backends()
+    ]
+    sr_chosen = super_resolution.select_backend().name
+
+    data = {
+        "super_resolution": {
+            "backends": sr_backends,
+            "auto_selected": sr_chosen,
+            "weight_dir": str(super_resolution.SR_DIR),
+        },
+        "text_detection": text_detection.backend_status(),
+        "table_structure": table_structure.backend_status(),
+    }
+    return ApiResponse(success=True, data=data, message="OK")
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """

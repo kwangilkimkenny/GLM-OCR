@@ -20,9 +20,10 @@
 | 2:30 | 우측 패널 — 필드 카드들. 한 카드 hover → 원본 이미지 박스 강조 | "이 추출값이 원본의 어느 영역에서 나왔는지 즉시 확인 가능합니다." |
 | 2:50 | 한 필드 값 클릭 → inline 수정 → ✓ 승인 | "필요하면 평가자께서 직접 수정·승인하실 수 있습니다." |
 | 3:10 | 우측 상단 **🛡 교차검증** 메트릭 클릭 → 비교 모드 토글 → 가운데 패널에 Qwen vs GLM-OCR side-by-side | "두 모델이 독립적으로 동일하게 인식한 필드만 ✓ 교차검증 배지가 붙고 신뢰도 0.95로 승격됩니다." |
-| 3:40 | **📄 리포트** 버튼 → PDF로 저장 | "최종 결과는 우리카드 핵심시스템 호환 JSON 또는 PDF 리포트로 즉시 export 됩니다." |
-| 4:00 | 마무리 멘트 | "단순 OCR 아니라 **구조·문맥·근거·보안 위험까지 이해하고 사람 검수까지 한 흐름에 통합**한 문서 특화 AI 입니다. 우리카드 시스템과 즉시 연동 가능합니다." |
-| 4:30 | Q&A 버퍼 |  |
+| 3:40 | **품질/표** 탭 → SR 적용 배지 + 표 인식 6×3 → "HTML 미리보기" | "모바일로 찍어 흐려진 사진은 자동 진단 후 **Real-ESRGAN으로 SR**해서 OCR합니다. 격자선 표 안의 행/열 인덱스도 자동 회귀하므로 병합 셀이 어긋나지 않습니다." |
+| 4:00 | **📄 리포트** 버튼 → PDF로 저장 | "최종 결과는 우리카드 핵심시스템 호환 JSON 또는 PDF 리포트로 즉시 export 됩니다." |
+| 4:20 | 마무리 멘트 | "단순 OCR 아니라 **저해상도·구조·문맥·근거·보안 위험까지 이해하고 사람 검수까지 한 흐름에 통합**한 문서 특화 AI 입니다. 우리카드 시스템과 즉시 연동 가능합니다." |
+| 4:50 | Q&A 버퍼 |  |
 
 ---
 
@@ -47,6 +48,26 @@
    - `추출: 6` + `근거 X/Y` ← Grounding validator
    - `🔒 결과 N분 후 자동 삭제` ← cleanup_worker, settings.RETENTION_MINUTES
 4. 멘트: "양식 위치가 일정하면 후처리 추출기로, 일정하지 않으면 표 셀 라벨 매칭으로 잡습니다."
+
+### Step 2-bis — **저해상도 자동 복원 + 표 구조 인식 (Phase 6)** (2:00)
+
+1. 사이드바: **자동 품질 진단 + SR** ✓ , **표 구조 인식** ✓
+2. 의도적으로 저해상도(예: 600×900, 스마트폰으로 찍어 압축된 사업자등록증) 이미지 업로드
+3. 처리 후 상단 메트릭 바에 신규 배지 노출:
+   - `SR 적용 1p` ← Real-ESRGAN 4× 자동 적용 (가중치 미설치 시 OpenCV ESPCN → LANCZOS 자동 폴백)
+   - `표 1개 (gridline)` ← 격자선 검출로 행/열 인덱스 회귀 완료
+4. **품질/표** 탭 클릭 → 페이지별 진단 결과:
+   - `해상도 600 × 900` → `업스케일 ×2.67`
+   - `진단 노트`: `short_side=600 → upscale`, `brightness=228 비정상`, `contrast<35 → binarize`
+   - SR 백엔드 자동 선택 chip
+5. 같은 탭 하단 **표 구조 인식 (6×3, 병합 6개)** → "HTML 미리보기" 클릭 시 정확한 셀 병합으로 렌더
+6. 멘트:
+   > "원본 사업자등록증을 모바일로 찍어오면 보통 DPI 100 이하라 글자가 patch 미만으로 사라집니다. 시스템이 자동으로 진단하고 Real-ESRGAN 으로 SR을 적용한 뒤 OCR 합니다. 격자선 표 안의 행/열 인덱스는 LORE++ 폴백인 격자선 휴리스틱이 회귀합니다. 운영자가 별도 설정할 필요 없이 한 번에 끝납니다."
+7. 운영 점검: 새 터미널에서
+   ```bash
+   curl -s http://127.0.0.1:8000/api/v1/system/phase6-status | jq '.data.super_resolution.auto_selected, .data.table_structure'
+   ```
+   → 현재 자동 선택된 SR 백엔드 + 표 인식 백엔드 가용성을 한 줄로 점검.
 
 ### Step 3 — Near-Zero Hallucination (Grounding) (2:00)
 
@@ -106,6 +127,8 @@
 | 다른 양식에도 확장? | 4종 추출기(`merchant_application`/`id_card`/`bank_book`/`business_reg`) + freeform. 새 양식 추가 시 `core/extractors/` 디렉토리에 신규 모듈 1개 추가 + `registry.py` 등록만으로 끝. |
 | 라이브 운영시 GPU? | 현재 Quadro RTX 5000 ×2(16GB)에서 Qwen2.5-VL-7B-AWQ 단일 GPU. A100 1장이면 32B-AWQ까지 가능. |
 | 시스템 통합? | Export JSON이 우리카드 핵심시스템 호환 schema. Flask `glmocr.server` 또는 FastAPI `/api/v1/tasks/upload` 둘 다 REST. |
+| 저해상도/모바일 사진 처리? | (Phase 6) `auto_quality=true`로 자동 진단 → Real-ESRGAN 4× SR + deshadow + 조명 보정 + 적응 이진화. 가중치 미설치 시 OpenCV ESPCN → LANCZOS 안전 폴백. `/api/v1/system/phase6-status`로 백엔드 가용성 노출. |
+| 표 안의 행/열 정확도? | (Phase 6-D) `table_structure=true`로 격자선 휴리스틱(LORE++ 폴백) 행/열 인덱스 회귀. 병합 셀 검출 정확. 응답의 `tables[].cells[]`에 `row/col/row_span/col_span` 노출, HTML 직렬화도 동시 제공. |
 
 ---
 
@@ -121,6 +144,14 @@ curl -s -X POST --max-time 2 -o /dev/null -w '5003(GLM) %{http_code}\n' \
 
 # 2. GPU 메모리 여유
 nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader
+
+# 3. Phase 6 SR/Det/Table 백엔드 상태 (가중치 가용성)
+curl -s http://127.0.0.1:8000/api/v1/system/phase6-status \
+  | python -c "import sys,json; d=json.load(sys.stdin)['data']; \
+print('SR auto:', d['super_resolution']['auto_selected']); \
+print('Det CRAFT:', d['text_detection']['craft']['available']); \
+print('Tbl LORE:', d['table_structure']['lore']['available'])"
+# 기대 출력: SR auto: realesrgan (또는 opencv-dnn-superres / lanczos-sharpen)
 
 # 3. Ollama 모델 로드 미리 trigger (cold start 회피)
 curl -s -X POST http://localhost:11434/api/generate \
@@ -140,3 +171,6 @@ curl -s http://127.0.0.1:8080/v1/models
 | 비교 모드 처리 시간 너무 김 | "비교 모드는 두 엔진 순차 실행이라 시간이 두 배 듭니다"로 자연스럽게 설명 — 단일 엔진으로 폴백 |
 | 박스가 어긋남 | (이미 해결됨 — 새로고침으로 정상화) |
 | 새 신청서에서 추출 0건 | grounding이 너무 엄격할 수도. 사이드바 마스킹 = none + 다른 엔진 시도 |
+| Phase 6 "품질/표" 탭이 안 보임 | `auto_quality` 또는 `table_structure` 체크박스가 꺼져 있음. 사이드바에서 체크 후 재업로드 |
+| SR 너무 느림 (페이지당 1초+) | Real-ESRGAN이 작동 중. 빠른 시연이 필요하면 `WOORI_SR_MODELS_DIR=/dev/null` 환경변수로 강제 폴백하거나 가중치 일시 제거 → ESPCN(150ms) 또는 LANCZOS(100ms) 자동 폴백 |
+| 표가 인식 안 됨 | PP-DocLayoutV3가 "table" 라벨로 잡지 못한 경우. 격자선이 또렷한 양식만 6-D가 동작. 양식에 격자선 없으면 VLM의 마크다운 표로 폴백 |
