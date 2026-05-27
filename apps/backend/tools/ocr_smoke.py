@@ -98,6 +98,19 @@ def main() -> int:
     pii = final.get("pii")
     print("\n=== pii ===")
     print(json.dumps(pii, ensure_ascii=False, indent=2)[:800] if pii else "none")
+
+    tables = final.get("tables")
+    print("\n=== tables ===")
+    if not tables:
+        print("none")
+    else:
+        print(f"{len(tables)} table(s) recognized")
+        for i, t in enumerate(tables):
+            print(f"  [{i}] page={t.get('page_index')} backend={t.get('backend')} "
+                  f"rows={t.get('rows')} cols={t.get('cols')} cells={len(t.get('cells') or [])}")
+            html = t.get("html") or ""
+            if html:
+                print("      html:", html[:400].replace("\n", " "))
     return 0
 
 
