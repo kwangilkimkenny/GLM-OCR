@@ -1,7 +1,7 @@
 """
 通用的Pydantic Schema
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Dict, Any, List, TypeVar, Generic
 from datetime import datetime
 
@@ -15,14 +15,15 @@ class ErrorResponse(BaseModel):
     message: str = Field(..., description="错误消息")
     detail: Optional[str] = Field(None, description="详细错误信息")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "error": "ValidationError",
                 "message": "Invalid input",
                 "detail": "File size must be greater than 0"
             }
         }
+    )
 
 
 class MessageResponse(BaseModel):

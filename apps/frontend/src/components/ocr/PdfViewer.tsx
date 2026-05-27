@@ -8,7 +8,9 @@ import { usePdfZoom } from '@/hooks/usePdfZoom';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 // import 'react-pdf/dist/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://registry.npmmirror.com/pdfjs-dist/${pdfjs.version}/files/build/pdf.worker.min.mjs`
+// 오프라인/중국 미러 의존을 피하기 위해 널리 가용한 unpkg CDN 에서, react-pdf 가 번들한 pdfjs 버전과 정확히 일치하는 worker 를 로드.
+// (로컬 번들링이 이상적이나 pnpm 환경에서 pdfjs-dist 가 직접 의존성이 아니어서 ?url import 가 해석되지 않음 → CDN 폴백.)
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 
 
 
@@ -47,7 +49,7 @@ const PdfViewerCanvasOnly: React.FC<PdfViewerProps> = ({
 
     const documentOptions = useMemo(
         () => ({
-            cMapUrl: `https://registry.npmmirror.com/pdfjs-dist/${pdfjs.version}/files/cmaps/`,
+            cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
             cMapPacked: true,
         }),
         []
@@ -362,8 +364,8 @@ const PdfViewerCanvasOnly: React.FC<PdfViewerProps> = ({
                     file={file}
                     options={documentOptions}
                     onLoadSuccess={onDocumentLoadSuccess}
-                    loading={<div className="text-center py-20 text-gray-500">正在加载 PDF...</div>}
-                    error={<div className="text-red-600 text-center py-20">PDF 加载失败，请检查文件</div>}
+                    loading={<div className="text-center py-20 text-gray-500">PDF 불러오는 중...</div>}
+                    error={<div className="text-red-600 text-center py-20">PDF 로드 실패 — 파일을 확인하세요</div>}
                 >
                     {numPages > 0 && (
                         <div

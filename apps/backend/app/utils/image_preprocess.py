@@ -30,11 +30,16 @@ def deskew(gray: np.ndarray) -> tuple[np.ndarray, float]:
     coords = np.column_stack(np.where(thresh > 0))
     if coords.size == 0:
         return gray, 0.0
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
+    raw = cv2.minAreaRect(coords)[-1]
+    # minAreaRect 각도 규약은 OpenCV 버전마다 다르다(≥4.5: (0,90], ≤4.4: [-90,0)).
+    # [-45, 45] 로 정규화해 90°/−90° 과회전을 막는다.
+    if raw > 45:
+        raw -= 90
+    elif raw < -45:
+        raw += 90
+    # 정규화 값은 감지된 기울기(°). 텍스트를 수평으로 만들려면 반대 방향으로 회전.
+    # (cv2 4.13 에서 합성 기울기 이미지로 검증: 보정각 = -정규화각.)
+    angle = -raw
     if abs(angle) < 0.3:
         return gray, angle
     h, w = gray.shape[:2]

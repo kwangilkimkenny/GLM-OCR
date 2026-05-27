@@ -173,7 +173,10 @@ def _upscale_realesrgan(img_bgr: np.ndarray, scale: int = 4) -> np.ndarray:
             if model is None:
                 # RRDBNet 최소 구현
                 model = _build_rrdbnet(scale=scale)
-                state = torch.load(str(REALESRGAN_WEIGHT), map_location="cpu")
+                # weights_only=True: pickle RCE 차단 (PyTorch 권장 기본값)
+                state = torch.load(
+                    str(REALESRGAN_WEIGHT), map_location="cpu", weights_only=True
+                )
                 # 공식 체크포인트 키 처리
                 if "params_ema" in state:
                     state = state["params_ema"]

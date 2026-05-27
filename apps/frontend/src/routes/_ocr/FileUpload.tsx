@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Upload, Loader2 } from 'lucide-react'
 import { cn } from '@/libs/utils'
-import { uploadTask, getTaskStatus, type TaskStatus, type TaskStatusData } from '@/libs/api'
+import { uploadTask, getTaskStatus, getApiErrorMessage, type TaskStatus, type TaskStatusData } from '@/libs/api'
 import { toast } from 'sonner'
 
 
@@ -104,6 +104,9 @@ export function FileUpload({
 	const [isDragging, setIsDragging] = useState(false)
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
+	// 현재 활성 파일 id. 이전 파일의 폴링 응답이 늦게 도착했을 때
+	// 새 파일의 상태를 덮어쓰지 않도록 응답을 필터링하는 데 쓴다.
+	const activeFileIdRef = useRef<string | null>(null)
 	const [isLoading, setIsLoading] = useState(false)
 
 
@@ -168,6 +171,8 @@ export function FileUpload({
 		}
 
 		setIsLoading(true)
+		// 새 업로드 시작 전, 이전 파일의 폴링을 모두 중단한다 (file-switch race 방지).
+		stopAllPolling()
 		const uploadedFile: UploadedFile = {
 			id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
 			name: file.name,
@@ -177,6 +182,7 @@ export function FileUpload({
 			uploadTime: new Date(),
 			error: null
 		}
+		activeFileIdRef.current = uploadedFile.id
 		setSelectedFile(uploadedFile)
 
 
@@ -205,10 +211,9 @@ export function FileUpload({
 			if (taskId) {
 				startPolling(uploadedFile.id, taskId)
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			// 上传失败
-			const errorMessage = error.response?.data?.message || error.message || '파일 업로드 실패'
-			toast.error(errorMessage)
+			toast.error(getApiErrorMessage(error, '파일 업로드 실패'))
 			setSelectedFile(null)
 			setIsLoading(false)
 		}
@@ -239,10 +244,21 @@ export function FileUpload({
 		}
 	}
 
+	// 모든 폴링 중단 (파일 교체 시 이전 파일들의 인터벌 정리)
+	const stopAllPolling = () => {
+		pollingIntervalsRef.current.forEach(interval => clearInterval(interval))
+		pollingIntervalsRef.current.clear()
+	}
+
 	// 查询任务状态
 	const pollTaskStatus = async (fileId: string, taskId: string | number) => {
 		try {
 			const response = await getTaskStatus(taskId)
+			// 응답이 도착한 사이 다른 파일로 교체되었다면 stale — 상태를 덮어쓰지 않는다.
+			if (activeFileIdRef.current !== fileId) {
+				stopPolling(fileId)
+				return
+			}
 			const { status, error_message } = response
 
 			// 更新任务状态（error_message 对应 error），并保存完整的响应
@@ -259,7 +275,12 @@ export function FileUpload({
 				setIsLoading(false)
 			}
 		} catch (error: any) {
-			console.error('작업 상태 조회 실패:', error)
+			// 이미 다른 파일로 교체된 경우, 새 파일의 로딩 상태를 건드리지 않는다.
+			if (activeFileIdRef.current !== fileId) {
+				stopPolling(fileId)
+				return
+			}
+			console.error('작업 상태 조회 실패:', getApiErrorMessage(error))
 			// 查询失败时也停止轮询，避免无限重试
 			stopPolling(fileId)
 			setIsLoading(false)

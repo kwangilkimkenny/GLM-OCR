@@ -1,7 +1,7 @@
 """
 应用配置管理
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Literal, Optional
 from pathlib import Path
 
@@ -56,9 +56,7 @@ class Settings(BaseSettings):
     # 운영 중 문제가 생기면 코드 배포 없이 환경변수 HWPX_NATIVE_PATH=0 로 즉시 롤백 가능.
     HWPX_NATIVE_PATH: bool = True
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

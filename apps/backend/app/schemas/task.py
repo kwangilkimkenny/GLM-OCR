@@ -4,7 +4,7 @@
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
@@ -40,8 +40,8 @@ class TaskSubmitRequest(BaseModel):
         description="우리카드 POC 문서 유형. 후처리 추출기 선택에 사용된다.",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "original_filename": "document.pdf",
                 "file_type": "pdf",
@@ -53,6 +53,7 @@ class TaskSubmitRequest(BaseModel):
                 "output_format": "markdown",
             }
         }
+    )
 
 
 class TaskSubmitResponse(BaseModel):

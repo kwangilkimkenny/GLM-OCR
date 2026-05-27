@@ -152,7 +152,8 @@ def _load_craft():
         if model is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             model = _build_craft()
-            state = torch.load(str(CRAFT_WEIGHT), map_location="cpu")
+            # weights_only=True: pickle RCE 차단 (PyTorch 권장 기본값)
+            state = torch.load(str(CRAFT_WEIGHT), map_location="cpu", weights_only=True)
             # CRAFT 공식 가중치는 'module.<key>' prefix 포함
             cleaned: dict = {}
             for k, v in state.items():

@@ -39,7 +39,9 @@ export function OCRResults({ result, fileName }: OCRResultsProps) {
 					bbox = [x1, y1, x2, y2]
 				}
 				return {
-					id: b.block_id ?? index + Math.random() * 1000000,
+					// block_id 가 0 일 수도 있으므로 ?? 로 null/undefined 만 폴백.
+					// 폴백은 인덱스 기반의 안정적인 음수값 — 렌더마다 바뀌는 랜덤값(키/스크롤 불안정)을 쓰지 않는다.
+					id: b.block_id ?? -(index + 1),
 					content: blockContent,
 					bbox,
 					pageIndex: b.page_index ?? 1,

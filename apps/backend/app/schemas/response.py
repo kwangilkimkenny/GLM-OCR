@@ -2,7 +2,7 @@
 通用响应模型
 """
 from typing import Optional, Any, Generic, TypeVar
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 
 T = TypeVar('T')
@@ -15,8 +15,8 @@ class ApiResponse(BaseModel, Generic[T]):
     message: Optional[str] = Field(None, description="响应消息")
     error_code: Optional[str] = Field(None, description="错误码")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "success": True,
                 "data": {"key": "value"},
@@ -24,6 +24,7 @@ class ApiResponse(BaseModel, Generic[T]):
                 "error_code": None
             }
         }
+    )
 
 
 class TaskData(BaseModel):

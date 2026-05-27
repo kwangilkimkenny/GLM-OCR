@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
 	ShieldCheck,
 	GitCompareArrows,
@@ -38,6 +38,8 @@ const MASKING_OPTIONS: { id: MaskingLevel; label: string }[] = [
 export function OCRPage() {
 	const [uploadFile, setUploadFile] = useState<UploadedFile | null>(null)
 	const [parsedResult, setParsedResult] = useState<TaskResponse | null>(null)
+	// 현재 활성 파일 id 를 동기적으로 추적해, 이전 파일의 늦은 폴링 응답을 걸러낸다.
+	const activeFileIdRef = useRef<string | null>(null)
 	const [documentType, setDocumentType] = useState<DocumentType>('auto')
 	const [engine, setEngine] = useState<EngineId>('qwen')
 	const [maskingLevel, setMaskingLevel] = useState<MaskingLevel>('partial')
@@ -340,11 +342,16 @@ export function OCRPage() {
 							autoQuality={autoQuality}
 							tableStructure={tableStructure}
 							onFileUploaded={file => {
+								activeFileIdRef.current = file.id
 								setUploadFile(file)
 								setParsedResult(null)
 								resetHitl()
 							}}
-							onTaskStatusChange={data => setParsedResult(data)}
+							onTaskStatusChange={data => {
+								// 이전 파일의 늦은 폴링 응답이 현재 파일 결과를 덮어쓰지 않도록 무시한다.
+								if (data.fileId !== activeFileIdRef.current) return
+								setParsedResult(data)
+							}}
 						/>
 					</div>
 				</aside>

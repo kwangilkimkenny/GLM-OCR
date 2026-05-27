@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
@@ -25,20 +25,25 @@ api.interceptors.response.use(
 		return response
 	},
 	error => {
-		// 统一错误处理
-		if (error.response) {
-			// 服务器返回了错误状态码
-			console.error('API Error:', error.response.data)
-		} else if (error.request) {
-			// 请求已发出但没有收到响应
-			console.error('Network Error:', error.request)
-		} else {
-			// 其他错误
-			console.error('Error:', error.message)
-		}
+		// 统一错误处理: 진단에 유용한 한 줄만 남기고, 호출부에서는 getApiErrorMessage 로 메시지를 얻는다.
+		console.error('[API]', getApiErrorMessage(error))
 		return Promise.reject(error)
 	}
 )
+
+/**
+ * axios/일반 에러에서 사용자에게 보여줄 메시지를 일관되게 추출한다.
+ * 서버가 내려준 message → 에러 message → 폴백 순.
+ */
+export function getApiErrorMessage(error: unknown, fallback = '요청 처리 중 오류가 발생했습니다'): string {
+	if (axios.isAxiosError(error)) {
+		const data = (error as AxiosError<{ message?: string | null; error?: string | null }>).response?.data
+		return data?.message || data?.error || error.message || fallback
+	}
+	if (error instanceof Error) return error.message || fallback
+	if (typeof error === 'string') return error
+	return fallback
+}
 
 // API 统一响应格式
 export interface ApiResponse<T> {

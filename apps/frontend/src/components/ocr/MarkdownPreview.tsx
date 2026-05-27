@@ -28,7 +28,12 @@ const katexOptions = {
 }
 
 export function MarkdownPreview() {
-	const { blocks, hoveredBlockId, clickedPdfBlockId, setHoveredBlockId, setClickedBlockId } = useOcrStore()
+	// 전체 스토어 구독 대신 필요한 필드만 개별 selector 로 구독 (불필요한 리렌더 방지)
+	const blocks = useOcrStore(s => s.blocks)
+	const hoveredBlockId = useOcrStore(s => s.hoveredBlockId)
+	const clickedPdfBlockId = useOcrStore(s => s.clickedPdfBlockId)
+	const setHoveredBlockId = useOcrStore(s => s.setHoveredBlockId)
+	const setClickedBlockId = useOcrStore(s => s.setClickedBlockId)
 
 	const [showCopyButton, setShowCopyButton] = useState(false)
 
@@ -152,7 +157,8 @@ export function MarkdownPreview() {
 				style={{ height: totalHeight }}
 			>
 				{blocks.map((block, index) => {
-					if (!block.id) return null
+					// block.id === 0 은 유효한 ID 이므로 falsy 검사(!block.id)로 걸러내면 안 된다.
+					if (block.id == null) return null
 
 					const [startIndex, endIndex] = visibleRange
 					const isInRange = index >= startIndex && index <= endIndex

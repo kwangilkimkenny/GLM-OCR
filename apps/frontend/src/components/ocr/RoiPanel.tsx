@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { PencilLine, Play, Square, Trash2, X, Loader2, MousePointer } from 'lucide-react'
 
 import { regionOcr, type RoiInput } from '../../libs/api'
@@ -21,24 +21,35 @@ export function RoiPanel({ file }: RoiPanelProps) {
 
 	const [handwriting, setHandwriting] = useState(true)
 	const [runningAll, setRunningAll] = useState(false)
+	// 매 실행마다 증가하는 토큰. in-flight 응답이 돌아왔을 때 토큰이 바뀌었으면
+	// (= 그 사이 재실행되었으면) stale 결과를 버려 잘못된 ROI 에 덮어쓰는 것을 막는다.
+	const runTokenRef = useRef(0)
 
 	const canRun = !!file && rois.length > 0 && !runningAll
 
 	const handleRunAll = async () => {
 		if (!file || rois.length === 0) return
+		const token = ++runTokenRef.current
 		setRunningAll(true)
-		rois.forEach(r => updateRoi(r.id, { status: 'running', error: undefined }))
+		// 이번 실행에 보낼 ROI 의 id 를 name(고유) 기준으로 매핑해 둔다.
+		// 응답은 배열 인덱스가 아니라 name 으로 다시 찾아 매칭한다 (그 사이 rois 가 바뀌어도 안전).
+		const inputRois = rois
+		const idByName = new Map(inputRois.map(r => [r.name, r.id]))
+		inputRois.forEach(r => updateRoi(r.id, { status: 'running', error: undefined }))
 		try {
-			const inputs: RoiInput[] = rois.map(r => ({
+			const inputs: RoiInput[] = inputRois.map(r => ({
 				name: r.name,
 				bbox: r.bbox,
 				handwriting,
 			}))
 			const res = await regionOcr({ file: file.file, regions: inputs, handwriting })
+			// 재실행으로 토큰이 바뀌었다면 이 응답은 stale — 무시한다.
+			if (token !== runTokenRef.current) return
 			res.regions.forEach((rr, i) => {
-				const r = rois[i]
-				if (!r) return
-				updateRoi(r.id, {
+				// name 으로 매칭, 누락 시 같은 위치의 입력 ROI 로 폴백
+				const id = (rr.name != null && idByName.get(rr.name)) || inputRois[i]?.id
+				if (!id) return
+				updateRoi(id, {
 					status: rr.error ? 'error' : 'done',
 					text: rr.text,
 					processingTimeMs: rr.processing_time_ms,
@@ -46,11 +57,12 @@ export function RoiPanel({ file }: RoiPanelProps) {
 				})
 			})
 		} catch (e: any) {
-			rois.forEach(r =>
+			if (token !== runTokenRef.current) return
+			inputRois.forEach(r =>
 				updateRoi(r.id, { status: 'error', error: e?.message || 'ROI OCR 실패' })
 			)
 		} finally {
-			setRunningAll(false)
+			if (token === runTokenRef.current) setRunningAll(false)
 		}
 	}
 

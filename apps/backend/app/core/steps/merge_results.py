@@ -4,6 +4,7 @@
 
 from typing import Dict, Any, List, Optional, Callable
 from pathlib import Path
+import asyncio
 import json
 import os
 
@@ -193,7 +194,10 @@ async def _merge_to_markdown(
         first_image = (pages[0] or {}).get("image_file") if pages else None
         if first_image:
             try:
-                doc_elements = verify_elements(doc_elements, first_image)
+                # PIL crop + perceptual-hash 비교는 CPU-bound → thread offload.
+                doc_elements = await asyncio.to_thread(
+                    verify_elements, doc_elements, first_image
+                )
             except Exception as e:
                 logger.warning(f"[{context.task_id}] seal verify failed: {e}")
     result["doc_elements"] = doc_elements

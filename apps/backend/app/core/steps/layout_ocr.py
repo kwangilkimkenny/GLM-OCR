@@ -97,7 +97,8 @@ async def layout_and_ocr(
                 stem = os.path.splitext(os.path.basename(src))[0]
                 dst = os.path.join(output_dir, f"{stem}_preproc.png")
                 if use_auto:
-                    info = auto_preprocess_file(src, dst)
+                    # CLAHE/denoise/torch SR 은 CPU-bound. 이벤트 루프 블로킹 방지 위해 thread offload.
+                    info = await asyncio.to_thread(auto_preprocess_file, src, dst)
                     qr = info.get("quality_report") or {}
                     quality_reports.append({"file": src, **qr})
                     logger.info(
@@ -107,8 +108,9 @@ async def layout_and_ocr(
                         f"skipped={info.get('skipped', False)}"
                     )
                 else:
-                    info = preprocess_image_file(
-                        src, dst, do_deskew=True, binarize=binarize
+                    info = await asyncio.to_thread(
+                        preprocess_image_file, src, dst,
+                        do_deskew=True, binarize=binarize,
                     )
                     logger.info(f"[{task_id}] preprocessed: {info}")
                 preprocessed_files.append(dst)
@@ -173,7 +175,10 @@ async def layout_and_ocr(
         tables_meta: list[dict] = []
         if ocr_config.get("table_structure"):
             try:
-                tables_meta = _recognize_tables_in_result(task_id, result, output_dir)
+                # cv2 morphology/Hough + 선택적 torch — CPU-bound, thread offload.
+                tables_meta = await asyncio.to_thread(
+                    _recognize_tables_in_result, task_id, result, output_dir, page_size
+                )
                 if tables_meta:
                     result["tables"] = tables_meta
                     logger.info(f"[{task_id}] table_structure: {len(tables_meta)} table(s) recognized")
@@ -374,15 +379,24 @@ async def _call_ocr_service(
 
 
 def _recognize_tables_in_result(
-    task_id: str, ocr_result: Dict[str, Any], output_dir: str
+    task_id: str,
+    ocr_result: Dict[str, Any],
+    output_dir: str,
+    page_size: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """OCR 결과의 layout 블록에서 "table" 라벨 박스를 찾아 셀 구조 재구성.
 
     VLM 이 markdown 으로 변환한 표 외에, LORE++/gridline 으로 logical row/col 을 보장.
 
+    좌표계 주의: `layout_box` 는 `vlm_bbox_convert` 가 만든 **page_size 픽셀** 좌표
+    (0..page_width, 0..page_height) 다. 0..1000 정규화가 아니다. 따라서 실제 이미지
+    픽셀로 매핑할 때는 `이미지폭 / page_width` 스케일을 쓴다 (전처리/SR 로 이미지가
+    리사이즈돼도 정합). page_size 가 없으면 항등 스케일(이미지=page) 로 폴백.
+
     Returns:
         각 표마다 {page_index, page_image, table_bbox_norm, rows, cols, cells, html, backend}
     """
+    page_size = page_size or {}
     tables_meta: List[Dict[str, Any]] = []
     pages = ocr_result.get("pages") or []
     for page in pages:
@@ -394,20 +408,26 @@ def _recognize_tables_in_result(
         for block in blocks:
             if (block.get("layout_type") or "").lower() != "table":
                 continue
-            norm_box = block.get("layout_box") or []
-            if len(norm_box) != 4:
+            px_box = block.get("layout_box") or []
+            if len(px_box) != 4:
                 continue
-            # norm 0..1000 → 픽셀
             try:
                 import cv2  # local
                 img = cv2.imread(image_file)
                 if img is None:
                     continue
                 h, w = img.shape[:2]
-                x1 = int(norm_box[0] * w / 1000)
-                y1 = int(norm_box[1] * h / 1000)
-                x2 = int(norm_box[2] * w / 1000)
-                y2 = int(norm_box[3] * h / 1000)
+                # page_size 픽셀 → 실제 이미지 픽셀. page_width/height 없거나 0 이면 항등.
+                pw = float(page_size.get("width") or 0) or float(w)
+                ph = float(page_size.get("height") or 0) or float(h)
+                sx = w / pw
+                sy = h / ph
+                x1 = max(0, min(w, int(px_box[0] * sx)))
+                y1 = max(0, min(h, int(px_box[1] * sy)))
+                x2 = max(0, min(w, int(px_box[2] * sx)))
+                y2 = max(0, min(h, int(px_box[3] * sy)))
+                if x2 - x1 < 2 or y2 - y1 < 2:
+                    continue
                 structure = recognize_table(img, [x1, y1, x2, y2])
                 tables_meta.append(
                     {
@@ -415,7 +435,8 @@ def _recognize_tables_in_result(
                         "page_image": image_file,
                         "block_index": block.get("index"),
                         "table_bbox": [x1, y1, x2, y2],
-                        "table_bbox_norm": norm_box,
+                        # page_size 픽셀 좌표 (key 는 프론트 계약 호환 위해 유지)
+                        "table_bbox_norm": px_box,
                         "rows": structure.rows,
                         "cols": structure.cols,
                         "backend": structure.backend,

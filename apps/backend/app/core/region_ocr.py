@@ -36,13 +36,41 @@ PROMPT_PRINTED = (
 )
 
 
+# ROI 크롭이 과도하게 크면 base64 페이로드가 수 MB → vLLM 요청 비대. 긴 변 상한.
+_MAX_ROI_SIDE = 1536
+
+
 def _encode_png_to_data_uri(img: Image.Image) -> str:
     import io
 
+    w, h = img.size
+    longest = max(w, h)
+    if longest > _MAX_ROI_SIDE:
+        scale = _MAX_ROI_SIDE / float(longest)
+        img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
     return f"data:image/png;base64,{b64}"
+
+
+def _crop_and_encode(
+    image: Image.Image, bbox: list[int], snapshot_dir: Optional[str]
+) -> tuple[tuple[int, int, int, int], str, Optional[str]]:
+    """CPU/IO-bound 크롭·스냅샷 저장·PNG 인코딩. asyncio.to_thread 로 호출."""
+    width, height = image.size
+    x0, y0, x1, y1 = _clamp_bbox(bbox, width, height)
+    crop = image.crop((x0, y0, x1, y1))
+
+    snapshot_path: Optional[str] = None
+    if snapshot_dir:
+        Path(snapshot_dir).mkdir(parents=True, exist_ok=True)
+        snapshot_path = str(
+            Path(snapshot_dir) / f"roi_{x0}_{y0}_{x1}_{y1}_{int(time.time()*1000)}.png"
+        )
+        crop.save(snapshot_path, format="PNG")
+
+    return (x0, y0, x1, y1), _encode_png_to_data_uri(crop), snapshot_path
 
 
 def _clamp_bbox(bbox: list[int], width: int, height: int) -> tuple[int, int, int, int]:
@@ -99,19 +127,9 @@ async def process_region(
     Returns:
         {bbox, text, raw_response_id, processing_time_ms, snapshot_path?}
     """
-    width, height = image.size
-    x0, y0, x1, y1 = _clamp_bbox(bbox, width, height)
-    crop = image.crop((x0, y0, x1, y1))
-
-    snapshot_path: Optional[str] = None
-    if snapshot_dir:
-        Path(snapshot_dir).mkdir(parents=True, exist_ok=True)
-        snapshot_path = str(
-            Path(snapshot_dir) / f"roi_{x0}_{y0}_{x1}_{y1}_{int(time.time()*1000)}.png"
-        )
-        crop.save(snapshot_path, format="PNG")
-
-    data_uri = _encode_png_to_data_uri(crop)
+    (x0, y0, x1, y1), data_uri, snapshot_path = await asyncio.to_thread(
+        _crop_and_encode, image, bbox, snapshot_dir
+    )
     prompt = PROMPT_HANDWRITING if handwriting else PROMPT_PRINTED
     started = time.perf_counter()
     text, raw = await _call_vllm_chat(data_uri, prompt)
@@ -133,7 +151,7 @@ async def process_regions(
     snapshot_dir: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """여러 영역을 순차 처리. vLLM single-GPU 환경에서 동시성은 backpressure 위험."""
-    image = Image.open(image_path).convert("RGB")
+    image = await asyncio.to_thread(lambda: Image.open(image_path).convert("RGB"))
     results: list[dict[str, Any]] = []
     for region in regions:
         name = region.get("name") or f"region_{len(results)+1}"

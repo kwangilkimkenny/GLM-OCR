@@ -59,11 +59,34 @@ def storage_summary() -> dict:
     }
 
 
-def _is_expired(path: Path, ttl_seconds: int) -> bool:
+def _newest_mtime(path: Path) -> float:
+    """디렉토리 트리 전체에서 가장 최근 mtime. 0 이면 stat 실패."""
     try:
-        return (time.time() - path.stat().st_mtime) > ttl_seconds
+        newest = path.stat().st_mtime
     except OSError:
+        return 0.0
+    for root, dirs, files in os.walk(path):
+        for name in dirs + files:
+            try:
+                m = (Path(root) / name).stat().st_mtime
+                if m > newest:
+                    newest = m
+            except OSError:
+                pass
+    return newest
+
+
+def _is_expired(path: Path, ttl_seconds: int) -> bool:
+    """트리 내 가장 최근 쓰기 기준으로 만료 판정.
+
+    상위 task 디렉토리 mtime 만 보면, 하위 디렉토리에 파일을 계속 쓰는
+    장시간 작업이 만료로 오판돼 진행 중에 삭제될 수 있다(race). 트리 전체의
+    최신 mtime 을 liveness 신호로 사용해 활성 작업을 보호한다.
+    """
+    newest = _newest_mtime(path)
+    if newest <= 0:
         return False
+    return (time.time() - newest) > ttl_seconds
 
 
 def cleanup_once() -> dict:
@@ -79,6 +102,10 @@ def cleanup_once() -> dict:
             continue
         if _is_expired(p, ttl):
             try:
+                # 삭제 직전 재확인 — 판정과 rmtree 사이에 새 쓰기가 들어온 경우 보호.
+                if not _is_expired(p, ttl):
+                    kept += 1
+                    continue
                 shutil.rmtree(p)
                 deleted += 1
                 logger.info(f"cleanup_worker: deleted expired task dir {p.name}")
