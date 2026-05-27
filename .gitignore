@@ -174,5 +174,20 @@ data/
 
 /apps/frontend/node_modules/
 /apps/frontend/dist/
+/apps/backend/tools/hwpx-runner/node_modules/
 *.pid
 .DS_Store
+
+# Local OCR test inputs and outputs
+results/
+test/
+test-originals/
+test-preproc/
+
+# Local datasets and samples (large, not for VCS)
+Data/
+New_Sample/
+New_Sample.zip
+
+# Local editor/agent config
+.claude/

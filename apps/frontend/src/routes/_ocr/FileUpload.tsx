@@ -32,22 +32,36 @@ export interface TaskResponse {
 interface FileUploadProps {
 	onFileUploaded: (params: UploadedFile) => void
 	onTaskStatusChange?: (params: TaskResponse) => void
+	documentType?: string
+	engine?: 'qwen' | 'glm-ocr' | 'both'
+	maskingLevel?: 'none' | 'partial' | 'full'
+	preprocess?: boolean
+	preprocessBinarize?: boolean
+	autoSegment?: boolean
+	// Phase 6
+	autoQuality?: boolean
+	tableStructure?: boolean
 }
 
 // 允许的文件格式
+// 한컴 한글 MIME 은 환경마다 일관성이 없어 (`application/x-hwp`, `application/haansofthwp`,
+// 일부 OS 는 `application/octet-stream` 으로 인식) 확장자 폴백이 더 신뢰할 만하다.
 const ALLOWED_FILE_TYPES = [
 	'image/png',
 	'image/jpeg',
 	'image/jpg',
-	'application/pdf'
+	'application/pdf',
+	'application/x-hwp',
+	'application/haansofthwp',
+	'application/vnd.hancom.hwpx',
+	'application/octet-stream',
 ]
 
 // 允许的文件扩展名（用于备用验证）
-const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.pdf']
-// const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.pdf', '.doc', '.docx']
+const ALLOWED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.pdf', '.hwp', '.hwpx']
 
-// 文件大小限制：20MB
-const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB in bytes
+// 文件大小限制：50MB (HWPX 의 임베디드 이미지·도장 PNG 가 PDF 보다 큰 경우가 많음)
+const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB in bytes
 
 
 // 验证文件类型
@@ -74,7 +88,18 @@ const formatFileSize = (bytes: number): string => {
 	return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
 }
 
-export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadProps) {
+export function FileUpload({
+	onFileUploaded,
+	onTaskStatusChange,
+	documentType,
+	engine,
+	maskingLevel,
+	preprocess,
+	preprocessBinarize,
+	autoSegment,
+	autoQuality,
+	tableStructure,
+}: FileUploadProps) {
 	const [selectedFile, setSelectedFile] = useState<UploadedFile | null>(null)
 	const [isDragging, setIsDragging] = useState(false)
 	const fileInputRef = useRef<HTMLInputElement>(null)
@@ -118,10 +143,10 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 	}
 
 	const handleFile = async (file: File) => {
-		// 验证文件类型
+		// 파일 형식 검증
 		if (!isValidFileType(file)) {
 			toast.error(
-				`不支持的文件格式。支持的格式：${ALLOWED_EXTENSIONS.join(', ').toUpperCase()}`
+				`지원하지 않는 파일 형식입니다. 지원 형식: ${ALLOWED_EXTENSIONS.join(', ').toUpperCase()}`
 			)
 			// 重置 input 的值
 			if (fileInputRef.current) {
@@ -133,7 +158,7 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 		// 验证文件大小
 		if (!isValidFileSize(file)) {
 			toast.error(
-				`文件大小超过限制。当前文件：${formatFileSize(file.size)}，最大允许：${formatFileSize(MAX_FILE_SIZE)}`
+				`파일 크기가 제한을 초과했습니다. 현재 파일: ${formatFileSize(file.size)}, 최대 허용: ${formatFileSize(MAX_FILE_SIZE)}`
 			)
 			// 重置 input 的值
 			if (fileInputRef.current) {
@@ -158,7 +183,15 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 		try {
 			const uploadParams: Parameters<typeof uploadTask>[0] = {
 				file: file,
-				custom_url: undefined
+				custom_url: undefined,
+				document_type: documentType,
+				engine: engine,
+				masking_level: maskingLevel,
+				preprocess: preprocess,
+				preprocess_binarize: preprocessBinarize,
+				auto_segment: autoSegment,
+				auto_quality: autoQuality,
+				table_structure: tableStructure,
 			}
 
 			const response = await uploadTask(uploadParams)
@@ -174,7 +207,7 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 			}
 		} catch (error: any) {
 			// 上传失败
-			const errorMessage = error.response?.data?.message || error.message || '文件上传失败'
+			const errorMessage = error.response?.data?.message || error.message || '파일 업로드 실패'
 			toast.error(errorMessage)
 			setSelectedFile(null)
 			setIsLoading(false)
@@ -226,7 +259,7 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 				setIsLoading(false)
 			}
 		} catch (error: any) {
-			console.error('查询任务状态失败:', error)
+			console.error('작업 상태 조회 실패:', error)
 			// 查询失败时也停止轮询，避免无限重试
 			stopPolling(fileId)
 			setIsLoading(false)
@@ -245,7 +278,7 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 		<div className='h-full flex flex-col bg-white dark:bg-gray-900 border-r border-border'>
 			{/* 文件上传区域 */}
 			<div className='p-4'>
-				<h2 className='text-lg font-semibold mb-4'>文件上传</h2>
+				<h2 className='text-lg font-semibold mb-4'>파일 업로드</h2>
 				<div
 					className={cn(
 						'border-2 border-dashed rounded-lg py-8 px-4 text-center cursor-pointer transition-colors',
@@ -269,12 +302,11 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 					) : (
 						<>
 							<Upload className='size-12 mx-auto mb-4 text-gray-400' />
-							<p className='text-sm font-medium mb-1'>点击或拖拽文件到此处</p>
+							<p className='text-sm font-medium mb-1'>클릭 또는 파일을 끌어다 놓으세요</p>
 							<p className='text-xs text-gray-500'>
-								格式：png/jpg/jpeg, pdf
-								{/* 格式：png/jpg/jpeg, pdf, doc, docx */}
+								형식: png/jpg, pdf, hwp/hwpx
 							</p>
-							<p className='text-xs text-gray-400 mt-1'>最大 20MB</p>
+							<p className='text-xs text-gray-400 mt-1'>최대 50MB</p>
 						</>
 					)}
 				</div>
@@ -283,7 +315,7 @@ export function FileUpload({ onFileUploaded, onTaskStatusChange }: FileUploadPro
 					ref={fileInputRef}
 					type='file'
 					className='hidden'
-					accept='image/*,.pdf,.doc,.docx'
+					accept='image/*,.pdf,.hwp,.hwpx'
 					disabled={isLoading}
 					onChange={handleFileInput}
 				/>

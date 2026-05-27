@@ -1,3 +1,7 @@
+server:
+  host: 0.0.0.0
+  port: 5002
+
 pipeline:
   maas:
     enabled: false
@@ -7,17 +11,24 @@ pipeline:
     api_port: 8080
     api_path: /v1/chat/completions
     api_mode: openai
-    model: glm-ocr
+    model: qwen2.5-vl-7b
     connect_timeout: 600
     request_timeout: 600
 
   page_loader:
     max_tokens: 4096
+    # Qwen2.5-VL 은 instruction-following 모델이므로 명시적 OCR 지시가 필요.
+    # 비워두면 image-description 또는 번역으로 해석함.
+    task_prompt_mapping:
+      text: "이 문서 이미지의 모든 텍스트를 정확히 그대로 추출해 마크다운으로 출력하세요. 표는 마크다운 표로, 줄바꿈과 위치 순서를 유지하세요. 설명·요약·번역 없이 인식된 텍스트만 출력하세요."
+      table: "이 이미지의 표를 마크다운 표 형식으로 정확히 추출하세요. 표 외 요소는 무시하세요."
+      formula: "이 이미지의 수식을 LaTeX 로 정확히 추출하세요."
 
   layout:
     model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
     batch_size: 1
     workers: 1
+    # vLLM 이 GPU 1 만 점유 → 레이아웃은 GPU 0 사용 가능
     cuda_visible_devices: "0"
 
 logging:

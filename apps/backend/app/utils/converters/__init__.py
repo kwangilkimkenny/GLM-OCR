@@ -11,6 +11,8 @@ from app.utils.converters.base import BaseConverter
 from app.utils.converters.pdf import PDFConverter
 from app.utils.converters.image import ImageConverter
 from app.utils.converters.word import WordConverter
+from app.utils.converters.hwpx import HwpxConverter
+from app.utils.converters.hwp import HwpConverter
 from app.utils.converters.converter import FileConverterService, default_converter, convert_file
 from app.utils.converters.exceptions import UnsupportedFormatError
 from app.utils.logger import logger
@@ -104,6 +106,8 @@ def register_default_converters():
     ConverterFactory.register(PDFConverter)
     ConverterFactory.register(ImageConverter)
     ConverterFactory.register(WordConverter)
+    ConverterFactory.register(HwpxConverter)
+    ConverterFactory.register(HwpConverter)
 
 
 # 自动注册默认转换器
@@ -120,6 +124,8 @@ __all__ = [
     "PDFConverter",
     "ImageConverter",
     "WordConverter",
+    "HwpxConverter",
+    "HwpConverter",
 
     # 统一服务（推荐使用）
     "FileConverterService",

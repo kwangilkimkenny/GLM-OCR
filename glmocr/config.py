@@ -159,7 +159,9 @@ class PageLoaderConfig(_BaseConfig):
     image_expect_length: int = 6144
     image_format: str = "JPEG"
     min_pixels: int = 112 * 112
-    max_pixels: int = 14 * 14 * 4 * 1280
+    # Phase 6-A: 저해상도 페이지에서 작은 글자(주민번호·약관 등) 누락 방지.
+    # 10.1M (1280) → 20.0M (2540). RTX 5000 16GB batch=1 안정 동작 범위.
+    max_pixels: int = 14 * 14 * 4 * 2540
 
     task_prompt_mapping: Optional[Dict[str, str]] = None
 

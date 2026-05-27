@@ -92,6 +92,26 @@ async def pdf_to_image(
         page_count = result["page_count"]
         metadata = result["metadata"]
 
+        # HWPX 네이티브 경로 — 변환기가 구조화 JSON 을 동봉했으면 컨텍스트에 실어
+        # layout_ocr 가 VLM 호출 없이 어댑터로 분기하도록 한다.
+        source_format = (metadata or {}).get("source_format", "")
+        if isinstance(source_format, str) and (
+            source_format == "hwpx" or source_format == "hwp_via_libreoffice_to_hwpx"
+        ):
+            # metadata 가 None 이 아님은 위 truthy 매칭이 보증 (None 이면 source_format=="")
+            structured = metadata.get("hwpx_structured")
+            if structured:
+                context.set("skip_ocr", True)
+                context.set("hwpx_structured", structured)
+                context.set("hwpx_source_format", source_format)
+                # C6: 구조화 JSON 은 context 로 이관 완료 — conversion_info.json / merged.json /
+                # API response 에 중복 직렬화되지 않도록 metadata 에서 제거.
+                metadata.pop("hwpx_structured", None)
+                logger.info(
+                    f"[{context.task_id}] HWPX native path enabled — OCR will be skipped. "
+                    f"source_format={source_format}"
+                )
+
         # 保存转换信息到JSON文件
         json_output_path = os.path.join(images_output_dir, "conversion_info.json")
         conversion_info = {
@@ -105,8 +125,10 @@ async def pdf_to_image(
         }
 
         try:
+            from app.core.steps.merge_results import _to_json_safe
+
             with open(json_output_path, "w", encoding="utf-8") as f:
-                json.dump(conversion_info, f, ensure_ascii=False, indent=2)
+                json.dump(_to_json_safe(conversion_info), f, ensure_ascii=False, indent=2)
             logger.info(f"Conversion info saved to: {json_output_path}")
         except Exception as e:
             logger.error(f"Failed to save conversion info JSON: {str(e)}")

@@ -9,39 +9,44 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import asyncio
+
 from app.api.tasks import router as tasks_router
 from app.api.system import router as system_router
+from app.api.regions import router as regions_router
+from app.api.audit import router as audit_router
+from app.core.cleanup_worker import cleanup_loop
 from app.core.task_manager import init_task_system, shutdown_task_system
 from app.db.database import init_db, close_db
+from app.models import audit as _audit_model  # noqa: F401  — Base 에 테이블 등록
 from app.utils.logger import logger
 from app.utils.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期管理"""
-    # 启动时
+    """应用生命周期管理 + 자동 삭제 워커"""
     logger.info("Application starting up...")
-
-    # 1. 初始化数据库
     await init_db()
-
-    # 2. 初始化任务系统
     await init_task_system()
 
-    logger.info("Application startup complete")
+    # 3-B 자동 삭제 워커 시작
+    cleanup_stop = asyncio.Event()
+    cleanup_task = asyncio.create_task(cleanup_loop(cleanup_stop))
+    app.state.cleanup_stop = cleanup_stop
+    app.state.cleanup_task = cleanup_task
 
+    logger.info("Application startup complete")
     yield
 
-    # 关闭时
     logger.info("Application shutting down...")
-
-    # 1. 关闭任务系统
+    cleanup_stop.set()
+    try:
+        await asyncio.wait_for(cleanup_task, timeout=5)
+    except (asyncio.TimeoutError, Exception):
+        cleanup_task.cancel()
     await shutdown_task_system()
-
-    # 2. 关闭数据库连接
     await close_db()
-
     logger.info("Application shutdown complete")
 
 
@@ -65,6 +70,8 @@ app.add_middleware(
 # 注册路由
 app.include_router(tasks_router, prefix="/api/v1")
 app.include_router(system_router, prefix="/api/v1")
+app.include_router(regions_router, prefix="/api/v1")
+app.include_router(audit_router, prefix="/api/v1")
 
 
 @app.get("/")

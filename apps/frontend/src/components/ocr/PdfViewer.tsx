@@ -301,7 +301,7 @@ const PdfViewerCanvasOnly: React.FC<PdfViewerProps> = ({
         <div className={`pdf-viewer flex flex-col h-full overflow-hidden ${className}`}>
             {/* 工具栏：缩放 + 翻页 */}
             <div className="toolbar bg-white border-b p-2 grid grid-cols-2 xl:grid-cols-3 gap-4 sticky top-0 z-10">
-                <div className='hidden xl:block text-nowrap truncate'>{file?.name || 'PDF 文件预览'}</div>
+                <div className='hidden xl:block text-nowrap truncate'>{file?.name || 'PDF 파일 미리보기'}</div>
                 <div className="flex items-center justify-center gap-3">
 
                     <button

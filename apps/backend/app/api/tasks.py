@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form, Re
 from mimetypes import guess_type
 
 from app.schemas.response import ApiResponse, TaskData, TaskResultData
+from app.schemas.task import DocumentType
 from app.core.task_manager import get_task_manager
 from app.utils.logger import logger
 from app.utils.upload_file_manager import file_upload_handler
@@ -32,6 +33,42 @@ async def submit_task(
     priority: int = Form(2, description="1=低,2=正常,3=高,4=紧急"),
     custom_url : str = Form(None, description=""),
     output_format: str = Form("markdown"),
+    document_type: DocumentType = Form(
+        DocumentType.FREEFORM,
+        description="우리카드 POC 문서 유형. 후처리 추출기 선택에 사용.",
+    ),
+    engine: str = Form(
+        "qwen",
+        description="OCR 엔진 선택: qwen | glm-ocr | both (교차검증)",
+    ),
+    masking_level: str = Form(
+        "partial",
+        description="PII 마스킹 정책: none | partial | full",
+    ),
+    preprocess: bool = Form(
+        False,
+        description="저품질 문서 자동 전처리 (deskew + CLAHE + unsharp) 적용",
+    ),
+    preprocess_binarize: bool = Form(
+        False,
+        description="전처리 시 추가로 binarize 까지 적용 (흑백 양식 강조)",
+    ),
+    verify_seals: bool = Form(
+        True,
+        description="도장/서명 영역을 사전 라이브러리와 유사도 비교 (Phase 4)",
+    ),
+    auto_segment: bool = Form(
+        False,
+        description="다중 페이지 PDF 에서 문서 유형별 자동 분할 (Phase 2-C)",
+    ),
+    auto_quality: bool = Form(
+        False,
+        description="이미지 품질 자동 진단 + SR/deshadow/illumination 자동 적용 (Phase 6-A/B)",
+    ),
+    table_structure: bool = Form(
+        False,
+        description="표 구조 인식 (LORE++ 또는 gridline) 으로 행/열 인덱스 보장 (Phase 6-D)",
+    ),
 ):
     """
     提交新任务
@@ -42,16 +79,26 @@ async def submit_task(
     - **ocr_config**: OCR配置（JSON字符串，可选）
     - **output_format**: 输出格式，默认markdown
     - **retry_config**: 重试配置（JSON字符串，可选）
+    - **document_type**: 문서 유형 (merchant_application/id_card/bank_book/business_reg/freeform)
     """
     try:
         # 生成document_id
         document_id = str(uuid.uuid4())
         task_id = str(uuid.uuid4())
 
-        parsed_ocr_config = None
-        # 解析配置
-        if custom_url is not None :
-            parsed_ocr_config = {"custom_url":custom_url}
+        parsed_ocr_config: dict = {
+            "document_type": document_type.value,
+            "engine": engine,
+            "masking_level": masking_level if masking_level in {"none", "partial", "full"} else "partial",
+            "preprocess": bool(preprocess),
+            "preprocess_binarize": bool(preprocess_binarize),
+            "verify_seals": bool(verify_seals),
+            "auto_segment": bool(auto_segment),
+            "auto_quality": bool(auto_quality),
+            "table_structure": bool(table_structure),
+        }
+        if custom_url is not None:
+            parsed_ocr_config["custom_url"] = custom_url
 
         # 保存文件
         save_dir = str(Path(settings.OUTPUT_DIR) / task_id)
@@ -228,6 +275,14 @@ async def get_task_status(task_id: str):
             response_data["metadata"]= result_data.get("metadata")
             response_data["full_markdown"] = result_data.get("full_markdown")
             response_data["layout"] = result_data.get("layout")
+            response_data["extracted_fields"] = result_data.get("extracted_fields")
+            response_data["cross_validation"] = result_data.get("cross_validation")
+            response_data["secondary_markdown"] = result_data.get("secondary_markdown")
+            response_data["secondary_layout"] = result_data.get("secondary_layout")
+            response_data["grounding"] = result_data.get("grounding")
+            response_data["pii"] = result_data.get("pii")
+            response_data["doc_elements"] = result_data.get("doc_elements")
+            response_data["segments"] = result_data.get("segments")
 
         return ApiResponse(
             success=True,

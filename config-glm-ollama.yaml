@@ -1,0 +1,28 @@
+server:
+  host: 0.0.0.0
+  port: 5003
+
+pipeline:
+  maas:
+    enabled: false
+
+  ocr_api:
+    api_host: localhost
+    api_port: 11434
+    api_path: /api/generate
+    model: glm-ocr:latest
+    api_mode: ollama_generate
+    connect_timeout: 600
+    request_timeout: 600
+
+  layout:
+    model_dir: PaddlePaddle/PP-DocLayoutV3_safetensors
+    batch_size: 1
+    workers: 1
+    cuda_visible_devices: "0"
+    threshold: 0.2
+    use_polygon: true
+    img_size: 1280
+
+logging:
+  level: INFO

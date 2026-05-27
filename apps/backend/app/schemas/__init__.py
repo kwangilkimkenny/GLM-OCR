@@ -5,6 +5,7 @@ Pydantic Schema定义
 """
 
 from app.schemas.task import (
+    DocumentType,
     TaskSubmitRequest,
     TaskSubmitResponse,
     TaskStatusResponse,
@@ -33,6 +34,7 @@ from app.schemas.response import ApiResponse, TaskData, TaskResultData
 
 __all__ = [
     # Task schemas
+    "DocumentType",
     "TaskSubmitRequest",
     "TaskSubmitResponse",
     "TaskStatusResponse",

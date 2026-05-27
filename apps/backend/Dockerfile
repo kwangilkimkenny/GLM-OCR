@@ -43,16 +43,32 @@ RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.li
     && libreoffice --version \
     && libreoffice --headless --version
 
+# Node.js 20 — HWPX runner (open-hangul-ai hwpx-cli) 가 ESM Node 18+ 요구.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/* \
+ && node --version && npm --version
+
 # 复制项目文件
 COPY pyproject.toml ./
 COPY app ./app
+COPY tools ./tools
+
+# HWPX runner — open-hangul-ai npm 패키지 설치 (production only).
+# package-lock.json 을 커밋하지 않는 정책이라 `npm ci` 대신 `npm install` 을 사용한다.
+# 재현성은 package.json 의 caret 범위에 의존 — 운영 환경에서 정확한 빌드 재현이 필요하면
+# `tools/hwpx-runner` 에 lockfile 을 commit 한 뒤 이 명령을 `npm ci --omit=dev` 로 되돌릴 것.
+RUN cd /app/tools/hwpx-runner \
+ && npm install --omit=dev --no-fund --no-audit \
+ && ls node_modules/open-hangul-ai/bin/hwpx-cli.mjs \
+ && node node_modules/open-hangul-ai/bin/hwpx-cli.mjs --version
 
 # 创建一个空的README.md（因为pyproject.toml中引用了它）
 RUN touch README.md
 
 # 安装uv包管理器并安装项目依赖
 RUN pip install --no-cache-dir uv -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    uv pip install --system -e . 
+    uv pip install --system -e .
 
 
 # 暴露端口 (默认8000，可通过环境变量配置)

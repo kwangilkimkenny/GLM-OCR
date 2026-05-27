@@ -9,8 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ReportRouteImport } from './routes/report'
 import { Route as OcrIndexRouteImport } from './routes/_ocr/index'
 
+const ReportRoute = ReportRouteImport.update({
+  id: '/report',
+  path: '/report',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OcrIndexRoute = OcrIndexRouteImport.update({
   id: '/_ocr/',
   path: '/',
@@ -18,29 +24,40 @@ const OcrIndexRoute = OcrIndexRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/report': typeof ReportRoute
   '/': typeof OcrIndexRoute
 }
 export interface FileRoutesByTo {
+  '/report': typeof ReportRoute
   '/': typeof OcrIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/report': typeof ReportRoute
   '/_ocr/': typeof OcrIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/report' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/_ocr/'
+  to: '/report' | '/'
+  id: '__root__' | '/report' | '/_ocr/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  ReportRoute: typeof ReportRoute
   OcrIndexRoute: typeof OcrIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/report': {
+      id: '/report'
+      path: '/report'
+      fullPath: '/report'
+      preLoaderRoute: typeof ReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_ocr/': {
       id: '/_ocr/'
       path: '/'
@@ -52,6 +69,7 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
+  ReportRoute: ReportRoute,
   OcrIndexRoute: OcrIndexRoute,
 }
 export const routeTree = rootRouteImport

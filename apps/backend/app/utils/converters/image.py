@@ -49,8 +49,14 @@ class ImageConverter(BaseConverter):
 
                 logger.info(f"图片尺寸: {width}x{height}, 原始格式: {original_format}")
 
-                # 获取DPI信息
-                dpi_info = getattr(img, "info", {}).get("dpi", (None, None))
+                # 获取DPI信息 — 스마트폰 사진의 IFDRational 을 float 로 정규화
+                raw_dpi = getattr(img, "info", {}).get("dpi", (None, None))
+                try:
+                    dpi_info = tuple(
+                        float(v) if v is not None else None for v in raw_dpi
+                    )
+                except (TypeError, ValueError):
+                    dpi_info = (None, None)
 
                 page_size = {
                     "width": width,

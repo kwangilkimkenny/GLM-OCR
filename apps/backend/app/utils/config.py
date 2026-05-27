@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     environment: Literal["development", "testing", "production"] = "development"
 
+    # HWPX 네이티브 파싱 경로 (open-hangul-ai 의 hwpx-cli 호출).
+    # 비활성화 (=False) 시 HwpxConverter 가 ConversionFailedError 를 던지므로,
+    # 운영 중 문제가 생기면 코드 배포 없이 환경변수 HWPX_NATIVE_PATH=0 로 즉시 롤백 가능.
+    HWPX_NATIVE_PATH: bool = True
+
     class Config:
         env_file = ".env"
         case_sensitive = True

@@ -10,7 +10,7 @@ from app.utils.logger import logger
 class FileUploadHandler:
     """文件上传处理器，只负责校验和保存"""
 
-    DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx"}
+    DOCUMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".hwp", ".hwpx"}
     IMAGE_EXTENSIONS = {
         ".jpg",
         ".jpeg",
@@ -26,6 +26,12 @@ class FileUploadHandler:
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        # 한컴 한글 MIME — 환경마다 일관성이 없어 확장자 체크가 1차 신뢰원이지만, MIME 도 받아들임.
+        "application/x-hwp",
+        "application/haansofthwp",
+        "application/vnd.hancom.hwp",
+        "application/vnd.hancom.hwpx",
+        "application/haansoftxml-hwpml",
     }
 
     def __init__(self) -> None:
@@ -50,7 +56,10 @@ class FileUploadHandler:
     ) -> str:
         """校验后将上传文件保存到指定目录，并返回保存路径"""
         if not self.valid(file):
-            raise HTTPException(status_code=400, detail="仅支持 PDF、Word 或常见图片格式文件")
+            raise HTTPException(
+                status_code=400,
+                detail="PDF, Word, HWP/HWPX 또는 일반 이미지 형식만 지원합니다.",
+            )
 
         safe_name = Path(filename or file.filename or "upload").name
         base_dir = Path(upload_dir) if upload_dir else Path(settings.OUTPUT_DIR)
